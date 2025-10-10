@@ -12,21 +12,15 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.AnvilScreenHandler;
 import net.minecraft.screen.slot.Slot;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.ApiServices;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.UserCache;
-import net.minecraft.server.GameProfileResolver;
 import net.minecraft.util.collection.DefaultedList;
 
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.text.html.Option;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -78,29 +72,31 @@ public class AnvilPlayerHeads implements ModInitializer {
             return Optional.empty(); // Player changed the head name, return early
         }
 
-        ItemStack current_item = anvilHandler.slots.getFirst().getStack();
-        ProfileComponent previous_profile_component = current_item.getItem().getComponents().get(DataComponentTypes.PROFILE);
-        GameProfile previous_profile = previous_profile_component != null ? previous_profile_component.getGameProfile() : null;
-        Text custom_name = current_item.getCustomName();
-        String custom_name_to_assign = custom_name != null ? custom_name.getString() : null;
+        // This prevents MC to cache an OfflinePlayerData in Singleplayer if the HTTP call fails for some reason
+        // (too many requests / Timeout / ...)
+        UserCache.setUseRemote(true);
 
-        custom_name_to_assign = newItemName;
+        SkullBlockEntity.fetchProfileByName(newItemName).thenAcceptAsync(profile -> {
+            if (is_rename_outdated(serverPlayer, newItemName)) {
+                return;
+            }
+            ItemStack current_item = anvilHandler.slots.getFirst().getStack();
+            ProfileComponent previous_profile_component = current_item.getItem().getComponents().get(DataComponentTypes.PROFILE);
+            GameProfile previous_profile = previous_profile_component != null ? previous_profile_component.gameProfile() : null;
+            Text custom_name = current_item.getCustomName();
+            String custom_name_to_assign = custom_name != null ? custom_name.getString() : null;
+            GameProfile profile_to_assign = previous_profile;
 
-        MinecraftServer minecraftServer = serverPlayer.getEntityWorld().getServer();
-        GameProfileResolver resolver = minecraftServer.getApiServices().profileResolver();
+            custom_name_to_assign = newItemName; // Profile does not exists, just perform rename
 
-        Optional<GameProfile> profile = resolver.getProfileByName(newItemName);
+            // Text entered links to a valid profile
+            if (profile.isPresent() && !profile.get().getProperties().isEmpty()) {
+                profile_to_assign = profile.get();
+                custom_name_to_assign = null; // We don't want the head renamed if there is a new profile assigned to it
+            }
 
-        GameProfile profile_to_assign = previous_profile;
-
-
-        if (profile.isPresent() && !profile.get().properties().isEmpty()) {
-            profile_to_assign = profile.get();
-            custom_name_to_assign = null; // We don't want the head renamed if there is a new profile assigned to it
-        }
-
-        perform_rename(serverPlayer, anvilHandler, custom_name_to_assign, profile_to_assign);
-
+            perform_rename(serverPlayer, anvilHandler, custom_name_to_assign, profile_to_assign);
+        }, SkullBlockEntity.EXECUTOR);
         return Optional.empty();
     }
 
@@ -109,8 +105,7 @@ public class AnvilPlayerHeads implements ModInitializer {
     }
 
     static void perform_rename(@NotNull ServerPlayerEntity serverPlayer, AnvilScreenHandler anvilHandler, String new_name, GameProfile new_profile) {
-        MinecraftServer minecraftServer = serverPlayer.getEntityWorld().getServer();
-        minecraftServer.executeSync(() -> {
+        serverPlayer.getServer().executeSync(() -> {
             ((AnvilScreenHandlerAccessor) anvilHandler).aph$getLevelCost().set(1);
             ItemStack newItem = anvilHandler.slots.getFirst().getStack().copy();
 
@@ -120,7 +115,7 @@ public class AnvilPlayerHeads implements ModInitializer {
                 newItem.remove(DataComponentTypes.CUSTOM_NAME);
             }
             if (new_profile != null) {
-                newItem.set(DataComponentTypes.PROFILE, ProfileComponent.ofStatic(new_profile));
+                newItem.set(DataComponentTypes.PROFILE, new ProfileComponent(new_profile));
             } else {
                 newItem.remove(DataComponentTypes.PROFILE);
             }
