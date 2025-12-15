@@ -5,10 +5,13 @@
 	"name": "Anvil Player Heads",
 	"description": "This mod changes a player head item to the corresponding player's skin when named in an anvil.",
 	"authors": [
-		"LukeGrahamLandry",
-		"blodhgarm",
-		"crimulus",
+        "crimulus",
+		"LukeGrahamLandry"
+    ],
+    "contributors": [
         "Azyrod",
+        "blodhgarm",
+        "FEEDEMFISH",
         "JNatheriver"
 	],
 	"contact": {
@@ -26,12 +29,9 @@
 		"anvil-player-heads.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.16.14",
-		"minecraft": ">=1.21.6",
+		"fabricloader": ">=0.18.2",
+		"minecraft": ">=1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
-	},
-	"suggests": {
-		"another-mod": "*"
 	}
 }
